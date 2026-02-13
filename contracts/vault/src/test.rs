@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use super::*;
-use crate::{VaultDAO, VaultDAOClient};
+use crate::{InitConfig, VaultDAO, VaultDAOClient};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     Env, Symbol, Vec,
@@ -12,7 +12,7 @@ fn test_multisig_approval() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, VaultDAO);
+    let contract_id = env.register(VaultDAO, ());
     let client = VaultDAOClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -27,14 +27,16 @@ fn test_multisig_approval() {
     signers.push_back(signer2.clone());
 
     // Initialize with 2-of-3 multisig
-    client.initialize(
-        &admin, &signers, &2,     // threshold
-        &1000,  // spending_limit
-        &5000,  // daily_limit
-        &10000, // weekly_limit
-        &500,   // timelock_threshold
-        &100,   // timelock_delay
-    );
+    let config = InitConfig {
+        signers,
+        threshold: 2,
+        spending_limit: 1000,
+        daily_limit: 5000,
+        weekly_limit: 10000,
+        timelock_threshold: 500,
+        timelock_delay: 100,
+    };
+    client.initialize(&admin, &config);
 
     // Treasurer roles
     client.set_role(&admin, &signer1, &Role::Treasurer);
@@ -65,7 +67,7 @@ fn test_unauthorized_proposal() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, VaultDAO);
+    let contract_id = env.register(VaultDAO, ());
     let client = VaultDAOClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -75,7 +77,16 @@ fn test_unauthorized_proposal() {
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
 
-    client.initialize(&admin, &signers, &1, &1000, &5000, &10000, &500, &100);
+    let config = InitConfig {
+        signers,
+        threshold: 1,
+        spending_limit: 1000,
+        daily_limit: 5000,
+        weekly_limit: 10000,
+        timelock_threshold: 500,
+        timelock_delay: 100,
+    };
+    client.initialize(&admin, &config);
 
     // Member tries to propose
     let res =
@@ -93,7 +104,7 @@ fn test_timelock_violation() {
     // Setup ledgers
     env.ledger().set_sequence_number(100);
 
-    let contract_id = env.register_contract(None, VaultDAO);
+    let contract_id = env.register(VaultDAO, ());
     let client = VaultDAOClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -106,14 +117,16 @@ fn test_timelock_violation() {
     signers.push_back(signer1.clone());
 
     // Initialize with low timelock threshold
-    client.initialize(
-        &admin, &signers, &1,     // threshold
-        &2000,  // spending_limit
-        &5000,  // daily_limit
-        &10000, // weekly_limit
-        &500,   // timelock_threshold (500)
-        &200,   // timelock_delay (200 ledgers)
-    );
+    let config = InitConfig {
+        signers,
+        threshold: 1,
+        spending_limit: 2000,
+        daily_limit: 5000,
+        weekly_limit: 10000,
+        timelock_threshold: 500,
+        timelock_delay: 200,
+    };
+    client.initialize(&admin, &config);
 
     client.set_role(&admin, &signer1, &Role::Treasurer);
 

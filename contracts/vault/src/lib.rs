@@ -12,6 +12,8 @@ mod test;
 mod token;
 mod types;
 
+pub use types::InitConfig;
+
 use errors::VaultError;
 use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, Vec};
 use types::{Config, Proposal, ProposalStatus, Role};
@@ -39,23 +41,11 @@ impl VaultDAO {
     ///
     /// # Arguments
     /// * `admin` - Initial administrator address who can manage roles and config.
-    /// * `signers` - The initial set of addresses authorized to approve proposals.
-    /// * `threshold` - The 'M' in M-of-N. Number of approvals required for execution.
-    /// * `spending_limit` - The maximum amount allowed for a single proposal.
-    /// * `daily_limit` - The 24-hour aggregate spending limit.
-    /// * `weekly_limit` - The 7-day aggregate spending limit.
-    /// * `timelock_threshold` - Proposals exceeding this amount trigger a mandatory delay.
-    /// * `timelock_delay` - The duration of the timelock delay (in ledgers).
+    /// * `config` - Initialization configuration containing signers, threshold, and limits.
     pub fn initialize(
         env: Env,
         admin: Address,
-        signers: Vec<Address>,
-        threshold: u32,
-        spending_limit: i128,
-        daily_limit: i128,
-        weekly_limit: i128,
-        timelock_threshold: i128,
-        timelock_delay: u64,
+        config: InitConfig,
     ) -> Result<(), VaultError> {
         // Prevent re-initialization
         if storage::is_initialized(&env) {
@@ -63,16 +53,16 @@ impl VaultDAO {
         }
 
         // Validate inputs
-        if signers.is_empty() {
+        if config.signers.is_empty() {
             return Err(VaultError::NoSigners);
         }
-        if threshold < 1 {
+        if config.threshold < 1 {
             return Err(VaultError::ThresholdTooLow);
         }
-        if threshold > signers.len() {
+        if config.threshold > config.signers.len() {
             return Err(VaultError::ThresholdTooHigh);
         }
-        if spending_limit <= 0 || daily_limit <= 0 || weekly_limit <= 0 {
+        if config.spending_limit <= 0 || config.daily_limit <= 0 || config.weekly_limit <= 0 {
             return Err(VaultError::InvalidAmount);
         }
 
@@ -80,24 +70,24 @@ impl VaultDAO {
         admin.require_auth();
 
         // Create config
-        let config = Config {
-            signers: signers.clone(),
-            threshold,
-            spending_limit,
-            daily_limit,
-            weekly_limit,
-            timelock_threshold,
-            timelock_delay,
+        let config_storage = Config {
+            signers: config.signers.clone(),
+            threshold: config.threshold,
+            spending_limit: config.spending_limit,
+            daily_limit: config.daily_limit,
+            weekly_limit: config.weekly_limit,
+            timelock_threshold: config.timelock_threshold,
+            timelock_delay: config.timelock_delay,
         };
 
         // Store state
-        storage::set_config(&env, &config);
+        storage::set_config(&env, &config_storage);
         storage::set_role(&env, &admin, Role::Admin);
         storage::set_initialized(&env);
         storage::extend_instance_ttl(&env);
 
         // Emit event
-        events::emit_initialized(&env, &admin, threshold);
+        events::emit_initialized(&env, &admin, config.threshold);
 
         Ok(())
     }

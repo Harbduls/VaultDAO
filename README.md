@@ -105,8 +105,6 @@ cd contracts/vault
 cargo test
 ```
 
-See [docs/TESTING.md](docs/TESTING.md) for more details.
-
 ---
 
 ## 🌊 Stellar Drips Wave
@@ -115,7 +113,6 @@ We are actively participating in the **Stellar Community Drips Wave**. We welcom
 
 - Browse [Wave Issues](docs/WAVE_ISSUES.md) for tasks.
 - Read [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
-- Check our [ROADMAP.md](ROADMAP.md) for project milestones.
 
 ## 🛡️ Security & Conduct
 

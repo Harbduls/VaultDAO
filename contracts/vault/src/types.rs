@@ -4,6 +4,26 @@
 
 use soroban_sdk::{contracttype, Address, Symbol, Vec};
 
+/// Initialization configuration - groups all config params to reduce function arguments
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct InitConfig {
+    /// List of authorized signers
+    pub signers: Vec<Address>,
+    /// Required number of approvals (M in M-of-N)
+    pub threshold: u32,
+    /// Maximum amount per proposal (in stroops)
+    pub spending_limit: i128,
+    /// Maximum aggregate daily spending (in stroops)
+    pub daily_limit: i128,
+    /// Maximum aggregate weekly spending (in stroops)
+    pub weekly_limit: i128,
+    /// Amount threshold above which a timelock applies
+    pub timelock_threshold: i128,
+    /// Delay in ledgers for timelocked proposals
+    pub timelock_delay: u64,
+}
+
 /// Vault configuration
 #[contracttype]
 #[derive(Clone, Debug)]
