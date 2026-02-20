@@ -24,7 +24,6 @@ interface Proposal {
     currentLedger?: number;
 }
 
-// Mock data for demonstration
 const mockProposals: Proposal[] = [
     {
         id: 1,
@@ -131,8 +130,7 @@ const Proposals: React.FC = () => {
     const [showRejectModal, setShowRejectModal] = useState(false);
     const [executingId, setExecutingId] = useState<number | null>(null);
 
-    // Mock user role - in production, fetch from contract
-    const userRole = 'Admin'; // or 'Treasurer' or 'None'
+    const userRole = 'Admin'; 
 
     // ---------------------------------------------------------------------------
     // Timelock helpers
@@ -170,17 +168,24 @@ const Proposals: React.FC = () => {
         if (selectedProposal === null) return;
         try {
             const txHash = await rejectProposal(selectedProposal);
+            
             setProposals(prev =>
                 prev.map(p =>
                     p.id === selectedProposal ? { ...p, status: 'Rejected' as const } : p
                 )
             );
-            notify('proposal_rejected', `Proposal #${selectedProposal} rejected successfully`, 'success');
+
+            notify(
+                'proposal_rejected',
+                `Proposal #${selectedProposal} rejected successfully`,
+                'success'
+            );
+
             console.log('Rejection reason:', reason);
             console.log('Transaction hash:', txHash);
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : 'Failed to reject proposal';
-            notify('proposal_rejected', message, 'error');
+            notify('proposal_rejected', message, 'error'); 
         } finally {
             setShowRejectModal(false);
             setSelectedProposal(null);
@@ -240,21 +245,17 @@ const Proposals: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            {/* Header */}
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                 <h2 className="text-3xl font-bold">Proposals</h2>
-                <button className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium min-h-[44px] sm:min-h-0">
+                <button className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium">
                     New Proposal
                 </button>
             </div>
 
-            {/* Proposals List */}
             <div className="space-y-4">
                 {proposals.length === 0 ? (
-                    <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-                        <div className="p-8 text-center text-gray-400">
-                            <p>No proposals found.</p>
-                        </div>
+                    <div className="bg-gray-800 rounded-xl border border-gray-700 p-8 text-center text-gray-400">
+                        <p>No proposals found.</p>
                     </div>
                 ) : (
                     proposals.map((proposal) => {
@@ -418,17 +419,15 @@ const Proposals: React.FC = () => {
                 )}
             </div>
 
-            {/* Confirmation Modal */}
             <ConfirmationModal
                 isOpen={showRejectModal}
                 title="Reject Proposal"
-                message="Are you sure you want to reject this proposal? This action is permanent and cannot be undone."
+                message="Are you sure you want to reject this proposal? This action is permanent."
                 confirmText="Reject Proposal"
                 cancelText="Cancel"
                 onConfirm={handleRejectConfirm}
                 onCancel={handleRejectCancel}
                 showReasonInput={true}
-                reasonPlaceholder="Enter rejection reason (optional)"
                 isDestructive={true}
             />
         </div>
