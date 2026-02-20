@@ -10,6 +10,8 @@ import {
   LogOut,
   ExternalLink,
   ShieldAlert,
+  Activity as ActivityIcon,
+  BarChart3,
 } from "lucide-react";
 import { useWallet } from "../../hooks/useWallet";
 
@@ -23,11 +25,13 @@ const DashboardLayout: React.FC = () => {
     return `${addr.slice(0, chars)}...${addr.slice(-chars)}`;
   };
 
-  const navItems = [
-    { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
-    { label: "Proposals", path: "/dashboard/proposals", icon: FileText },
-    { label: "Settings", path: "/dashboard/settings", icon: Settings },
-  ];
+    const navItems = [
+        { label: 'Overview', path: '/dashboard', icon: LayoutDashboard },
+        { label: 'Proposals', path: '/dashboard/proposals', icon: FileText },
+        { label: 'Activity', path: '/dashboard/activity', icon: ActivityIcon },
+        { label: 'Analytics', path: '/dashboard/analytics', icon: BarChart3 },
+        { label: 'Settings', path: '/dashboard/settings', icon: Settings },
+    ];
 
   return (
     <div className="flex h-screen bg-gray-900 text-white font-sans">
@@ -60,41 +64,24 @@ const DashboardLayout: React.FC = () => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
 
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 group ${
-                  isActive
-                    ? "bg-gradient-to-r from-purple-600/20 to-pink-600/20 text-white border border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.15)]"
-                    : "text-gray-400 hover:bg-gray-700/50 hover:text-white"
-                }`}
-                onClick={() => setIsSidebarOpen(false)}
-              >
-                <Icon
-                  size={20}
-                  className={`mr-3 transition-colors ${isActive ? "text-purple-400" : "group-hover:text-white"}`}
-                />
-                <span className="font-medium">{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="absolute bottom-8 left-0 w-full px-4">
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-gray-800/80 to-gray-700/40 border border-gray-600/30">
-            <p className="text-xs text-gray-400 mb-2">Network</p>
-            <div className="flex items-center space-x-2">
-              <div
-                className={`w-2 h-2 rounded-full ${network === "TESTNET" ? "bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]" : "bg-yellow-400 animate-pulse"}`}
-              ></div>
-              <span className="text-sm font-semibold uppercase tracking-wider">
-                {network || "Disconnected"}
-              </span>
-            </div>
-          </div>
-        </div>
-      </aside>
+                        return (
+                            <Link
+                                key={item.path}
+                                to={item.path}
+                                className={`flex items-center px-4 py-3 rounded-lg transition-colors ${
+                                    isActive
+                                        ? 'bg-purple-600 text-white'
+                                        : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+                                }`}
+                                onClick={() => setIsSidebarOpen(false)}
+                            >
+                                <Icon size={20} className="mr-3" />
+                                <span>{item.label}</span>
+                            </Link>
+                        );
+                    })}
+                </nav>
+            </aside>
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
