@@ -842,6 +842,7 @@ export const useVaultContract = () => {
         setRole: async () => { },
         getUserRole,
         assignRole: async () => { },
+        updateSpendingLimits,
         getProposals,
     };
 };
