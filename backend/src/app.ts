@@ -15,6 +15,22 @@ import {
 export function createApp(env: BackendEnv, runtime: BackendRuntime) {
   const app = express();
 
+
+  // Remove X-Powered-By header
+  app.disable("x-powered-by");
+
+  // Security headers middleware
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.set("X-Content-Type-Options", "nosniff");
+    res.set("X-Frame-Options", "DENY");
+
+    if (env.nodeEnv === "production") {
+      res.set(
+        "Strict-Transport-Security",
+        "max-age=31536000; includeSubDomains; preload",
+      );
+    }
+
   // CORS middleware
   app.use((req: Request, res: Response, next: NextFunction) => {
     const origin = req.get("Origin");
@@ -42,6 +58,7 @@ export function createApp(env: BackendEnv, runtime: BackendRuntime) {
       return;
     }
 
+
     next();
   });
 
@@ -64,7 +81,7 @@ export function createApp(env: BackendEnv, runtime: BackendRuntime) {
   });
   app.use(rateLimiter);
 
-  app.use(express.json());
+  app.use(express.json({ limit: env.requestBodyLimit }));
   app.use(createHealthRouter(env, runtime));
   app.use(createSnapshotRouter(runtime.snapshotService));
   app.use(
