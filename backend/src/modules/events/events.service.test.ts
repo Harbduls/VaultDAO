@@ -21,7 +21,8 @@ function createTestEnv(
     eventPollingIntervalMs: 10,
     eventPollingEnabled: true,
     corsOrigin: ["*"],
-    requestBodyLimit: "1mb",
+    requestBodyLimit: "10kb",
+    apiKey: "test-api-key",
     ...overrides,
   };
 }

@@ -243,7 +243,7 @@ export async function executeReplay(args: string[]): Promise<void> {
 }
 
 // Main entry point for CLI execution
-if (process.argv[1] && (process.argv[1].endsWith("replay-cli.ts") || process.argv[1].endsWith("replay-cli.js"))) {
+if (process.env.NODE_ENV !== "test") {
   const cliArgs = process.argv.slice(2);
   executeReplay(cliArgs);
 }
