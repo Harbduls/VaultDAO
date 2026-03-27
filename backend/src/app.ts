@@ -15,7 +15,6 @@ import {
 export function createApp(env: BackendEnv, runtime: BackendRuntime) {
   const app = express();
 
-
   // Remove X-Powered-By header
   app.disable("x-powered-by");
 
@@ -30,6 +29,8 @@ export function createApp(env: BackendEnv, runtime: BackendRuntime) {
         "max-age=31536000; includeSubDomains; preload",
       );
     }
+    next();
+  });
 
   // CORS middleware
   app.use((req: Request, res: Response, next: NextFunction) => {
@@ -57,7 +58,6 @@ export function createApp(env: BackendEnv, runtime: BackendRuntime) {
       res.sendStatus(204);
       return;
     }
-
 
     next();
   });

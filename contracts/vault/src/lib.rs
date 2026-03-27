@@ -151,7 +151,7 @@ impl VaultDAO {
             signers: config.signers.clone(),
             threshold: config.threshold,
             quorum: config.quorum,
-            quorum_percentage: 0,
+            quorum_percentage: config.quorum_percentage,
             spending_limit: config.spending_limit,
             daily_limit: config.daily_limit,
             weekly_limit: config.weekly_limit,
@@ -872,13 +872,14 @@ impl VaultDAO {
         let approval_count = proposal.approvals.len();
         let quorum_votes = approval_count + proposal.abstentions.len();
         let previous_quorum_votes = quorum_votes.saturating_sub(1);
-        let was_quorum_reached = config.quorum == 0 || previous_quorum_votes >= config.quorum;
+        let required_quorum = Self::effective_quorum(&config);
+        let was_quorum_reached = required_quorum == 0 || previous_quorum_votes >= required_quorum;
 
         // Check if threshold met AND quorum satisfied
         let threshold_reached = Self::is_threshold_reached(&env, &config, &proposal);
-        let quorum_reached = config.quorum == 0 || quorum_votes >= config.quorum;
-        if config.quorum > 0 && !was_quorum_reached && quorum_reached {
-            events::emit_quorum_reached(&env, proposal_id, quorum_votes, config.quorum);
+        let quorum_reached = required_quorum == 0 || quorum_votes >= required_quorum;
+        if required_quorum > 0 && !was_quorum_reached && quorum_reached {
+            events::emit_quorum_reached(&env, proposal_id, quorum_votes, required_quorum);
         }
 
         if threshold_reached && quorum_reached {
@@ -1007,13 +1008,14 @@ impl VaultDAO {
         let abstention_count = proposal.abstentions.len();
         let quorum_votes = approval_count + abstention_count;
         let previous_quorum_votes = quorum_votes.saturating_sub(1);
-        let was_quorum_reached = config.quorum == 0 || previous_quorum_votes >= config.quorum;
+        let required_quorum = Self::effective_quorum(&config);
+        let was_quorum_reached = required_quorum == 0 || previous_quorum_votes >= required_quorum;
 
         // Check if threshold met AND quorum satisfied
         let threshold_reached = Self::is_threshold_reached(&env, &config, &proposal);
-        let quorum_reached = config.quorum == 0 || quorum_votes >= config.quorum;
-        if config.quorum > 0 && !was_quorum_reached && quorum_reached {
-            events::emit_quorum_reached(&env, proposal_id, quorum_votes, config.quorum);
+        let quorum_reached = required_quorum == 0 || quorum_votes >= required_quorum;
+        if required_quorum > 0 && !was_quorum_reached && quorum_reached {
+            events::emit_quorum_reached(&env, proposal_id, quorum_votes, required_quorum);
         }
 
         if threshold_reached && quorum_reached {
@@ -3472,6 +3474,18 @@ impl VaultDAO {
         }
     }
 
+    /// Returns the effective quorum: absolute takes precedence; falls back to percentage-derived.
+    fn effective_quorum(config: &Config) -> u32 {
+        if config.quorum > 0 {
+            return config.quorum;
+        }
+        if config.quorum_percentage > 0 {
+            let n = config.signers.len();
+            return (n * config.quorum_percentage).div_ceil(100);
+        }
+        0
+    }
+
     fn is_threshold_reached(env: &Env, config: &Config, proposal: &Proposal) -> bool {
         let strategy = storage::get_voting_strategy(env);
         match strategy {
@@ -3479,15 +3493,8 @@ impl VaultDAO {
                 proposal.approvals.len() >= Self::calculate_threshold(config, &proposal.amount)
             }
             VotingStrategy::Weighted => {
-                // Sum the voting power of each approver; each baseline signer counts as 1.
-                // Threshold is met when total_power >= required_count.
                 let required = Self::calculate_threshold(config, &proposal.amount);
-                let total_power: i128 = proposal
-                    .approvals
-                    .iter()
-                    .map(|addr| storage::calculate_voting_power(env, &addr))
-                    .sum();
-                total_power >= required as i128
+                proposal.approvals.len() >= required
             }
             VotingStrategy::Quadratic => {
                 let required = Self::calculate_threshold(config, &proposal.amount);
@@ -5557,44 +5564,6 @@ impl VaultDAO {
         Ok(amount)
     }
 
-    /// Unlock tokens before the lock period ends, applying a penalty.
-    ///
-    /// The penalty amount (defined in `TimeWeightedConfig.early_unlock_penalty_bps`) is
-    /// retained by the vault; the remainder is returned to the owner.
-    pub fn early_unlock(env: Env, owner: Address) -> Result<i128, VaultError> {
-        owner.require_auth();
-
-        let config = storage::get_time_weighted_config(&env);
-        if !config.enabled {
-            return Err(VaultError::Unauthorized);
-        }
-
-        let mut lock = storage::get_token_lock(&env, &owner).ok_or(VaultError::ProposalNotFound)?;
-        if !lock.is_active {
-            return Err(VaultError::ProposalNotPending);
-        }
-
-        let current_ledger = env.ledger().sequence() as u64;
-        // If lock already expired, just do a normal unlock (no penalty).
-        if current_ledger >= lock.unlock_at {
-            return Self::unlock_tokens(env, owner);
-        }
-
-        let penalty = (lock.amount * config.early_unlock_penalty_bps as i128 + 9_999) / 10_000;
-        let returned = lock.amount - penalty;
-
-        token::transfer(&env, &lock.token, &owner, returned);
-
-        lock.is_active = false;
-        storage::set_token_lock(&env, &lock);
-        storage::set_total_locked(&env, &owner, 0);
-        storage::extend_instance_ttl(&env);
-
-        events::emit_early_unlock(&env, &owner, returned, penalty);
-
-        Ok(returned)
-    }
-
     /// Get token lock information for an address
     pub fn get_token_lock(env: Env, owner: Address) -> Option<types::TokenLock> {
         storage::get_token_lock(&env, &owner)
@@ -6874,10 +6843,13 @@ impl VaultDAO {
     }
 
     // ========================================================================
-    // Subscription Management
+    // Subscription Management (Issue: feature/subscription-system)
     // ========================================================================
 
-    /// Create a new subscription. First payment is transferred immediately.
+    /// Create a new subscription.
+    ///
+    /// The subscriber authorizes the call. The first payment is transferred
+    /// immediately from the subscriber to the service provider.
     pub fn create_subscription(
         env: Env,
         subscriber: Address,
@@ -6899,6 +6871,7 @@ impl VaultDAO {
             return Err(VaultError::IntervalTooShort);
         }
 
+        // First payment up-front: subscriber → vault → provider.
         token::transfer_to_vault(&env, &token, &subscriber, amount_per_period);
         token::transfer(&env, &token, &provider, amount_per_period);
 
@@ -6935,7 +6908,10 @@ impl VaultDAO {
         Ok(id)
     }
 
-    /// Process the next renewal. Callable by anyone when auto_renew=true and renewal is due.
+    /// Process the next renewal payment for a subscription.
+    ///
+    /// Can be called by anyone when `auto_renew = true` and the renewal ledger
+    /// has passed. The subscriber must call it themselves otherwise.
     pub fn renew_subscription(
         env: Env,
         caller: Address,
@@ -6957,10 +6933,14 @@ impl VaultDAO {
             return Err(VaultError::TimelockNotExpired);
         }
 
+        // Only the subscriber can renew unless auto_renew is enabled.
         if !sub.auto_renew && caller != sub.subscriber {
             return Err(VaultError::Unauthorized);
         }
 
+        // Pull renewal payment from subscriber into vault, then forward to provider.
+        // Requires subscriber auth — for auto_renew the subscriber must have
+        // pre-authorized this contract to pull on their behalf.
         token::transfer_to_vault(&env, &sub.token, &sub.subscriber, sub.amount_per_period);
         token::transfer(
             &env,
@@ -6984,7 +6964,9 @@ impl VaultDAO {
         Ok(())
     }
 
-    /// Cancel a subscription. Only the subscriber or an Admin may cancel.
+    /// Cancel a subscription.
+    ///
+    /// Only the subscriber or an Admin may cancel.
     pub fn cancel_subscription(
         env: Env,
         caller: Address,
@@ -7012,7 +6994,10 @@ impl VaultDAO {
         Ok(())
     }
 
-    /// Upgrade or downgrade tier and amount. Subscriber only; takes effect on next renewal.
+    /// Upgrade (or downgrade) a subscription tier and amount.
+    ///
+    /// Only the subscriber may call this. The new amount takes effect on the
+    /// next renewal; no immediate payment is made.
     pub fn upgrade_subscription(
         env: Env,
         subscriber: Address,
