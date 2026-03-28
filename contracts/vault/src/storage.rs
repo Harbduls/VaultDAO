@@ -1882,7 +1882,7 @@ fn add_to_delegators_index(env: &Env, delegate: &Address, delegator: &Address) {
 }
 
 fn remove_from_delegators_index(env: &Env, delegate: &Address, delegator: &Address) {
-    let mut delegators = get_delegators_for(env, delegate);
+    let delegators = get_delegators_for(env, delegate);
     let mut new_delegators = Vec::new(env);
     for d in delegators.iter() {
         if d != *delegator {
