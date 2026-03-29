@@ -31,6 +31,12 @@ const mockRuntime = {
   snapshotService: {},
   proposalActivityAggregator: {},
   recurringIndexerService: {},
+  jobManager: {
+    getAllJobs: () => [
+      { name: "event-polling", isRunning: () => true },
+      { name: "recurring-indexer", isRunning: () => true },
+    ],
+  },
 };
 
 test("App Integration Tests", async (t) => {
@@ -63,16 +69,11 @@ test("App Integration Tests", async (t) => {
     
     assert.strictEqual(body.success, true);
     assert.strictEqual(body.data.ok, true);
-    assert.strictEqual(body.data.service, "vaultdao-backend");
-    assert.strictEqual(body.data.environment, "test");
-    assert.strictEqual(body.data.network, "testnet");
-    assert.strictEqual(body.data.contractId, "CDTEST");
-    assert.ok(body.data.timestamp);
-    assert.deepStrictEqual(body.data.eventPolling, {
-      lastLedgerPolled: 123,
-      isPolling: true,
-      errors: 0,
-    });
+    assert.ok(Array.isArray(body.data.jobs));
+    assert.deepStrictEqual(body.data.jobs, [
+      { name: "event-polling", running: true },
+      { name: "recurring-indexer", running: true },
+    ]);
   });
 
   await t.test("GET /ready returns 200 when configured", async () => {
