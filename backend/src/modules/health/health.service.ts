@@ -49,10 +49,25 @@ export interface ReadinessPayload {
   };
 }
 
-export function buildHealthPayload(_env: BackendEnv, _runtime: BackendRuntime) {
-  return {
-    ok: true,
-  };
+export interface JobStatus {
+  readonly name: string;
+  readonly running: boolean;
+}
+
+export interface HealthPayload {
+  readonly ok: boolean;
+  readonly jobs: JobStatus[];
+}
+
+export function buildHealthPayload(_env: BackendEnv, runtime: BackendRuntime): HealthPayload {
+  const jobs: JobStatus[] = runtime.jobManager.getAllJobs().map((job) => ({
+    name: job.name,
+    running: job.isRunning(),
+  }));
+
+  const ok = jobs.every((job) => job.running);
+
+  return { ok, jobs };
 }
 
 export function buildStatusPayload(env: BackendEnv, runtime: BackendRuntime) {

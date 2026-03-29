@@ -14,7 +14,8 @@ export function getHealthController(
   runtime: BackendRuntime,
 ): RequestHandler {
   return (_request, response) => {
-    success(response, buildHealthPayload(env, runtime));
+    const payload = buildHealthPayload(env, runtime);
+    success(response, payload, { status: payload.ok ? 200 : 503 });
   };
 }
 

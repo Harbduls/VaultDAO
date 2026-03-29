@@ -32,13 +32,54 @@ const mockRuntime = {
   eventPollingService: {
     getStatus: () => ({ running: false, lastCheck: null }),
   },
+  jobManager: {
+    getAllJobs: () => [
+      { name: "event-polling", isRunning: () => true },
+      { name: "recurring-indexer", isRunning: () => true },
+    ],
+  },
 };
 
 test("builds a minimal liveness payload", () => {
   const payload = buildHealthPayload(mockEnv, mockRuntime as any);
 
   assert.equal(payload.ok, true);
-  assert.deepEqual(payload, { ok: true });
+  assert.deepEqual(payload.jobs, [
+    { name: "event-polling", running: true },
+    { name: "recurring-indexer", running: true },
+  ]);
+});
+
+test("buildHealthPayload returns ok: false when any job is not running", () => {
+  const runtime = {
+    ...mockRuntime,
+    jobManager: {
+      getAllJobs: () => [
+        { name: "event-polling", isRunning: () => true },
+        { name: "recurring-indexer", isRunning: () => false },
+      ],
+    },
+  };
+
+  const payload = buildHealthPayload(mockEnv, runtime as any);
+
+  assert.equal(payload.ok, false);
+  assert.deepEqual(payload.jobs, [
+    { name: "event-polling", running: true },
+    { name: "recurring-indexer", running: false },
+  ]);
+});
+
+test("buildHealthPayload returns ok: true when no jobs are registered", () => {
+  const runtime = {
+    ...mockRuntime,
+    jobManager: { getAllJobs: () => [] },
+  };
+
+  const payload = buildHealthPayload(mockEnv, runtime as any);
+
+  assert.equal(payload.ok, true);
+  assert.deepEqual(payload.jobs, []);
 });
 
 test("builds a status payload", () => {
@@ -57,7 +98,7 @@ test("health and status mask contractId in production", () => {
   const health = buildHealthPayload(prodEnv, mockRuntime as any);
   const status = buildStatusPayload(prodEnv, mockRuntime as any);
 
-  assert.deepEqual(health, { ok: true });
+  assert.equal(health.ok, true);
   assert.equal(
     status.contractId,
     `${longId.slice(0, 6)}...${longId.slice(-6)}`,
