@@ -1,6 +1,6 @@
 /**
  * Snapshot Aggregation Service
- * 
+ *
  * Produces current snapshots of signer and role assignments from indexed contract activity.
  * Supports deterministic state reconstruction from replayed event history.
  */
@@ -31,6 +31,31 @@ const logger = createLogger("snapshot-service");
 
 const REBUILD_BATCH_SIZE = 200;
 
+const TRANSIENT_ERROR_PATTERNS = [
+  /lock/i,
+  /timeout/i,
+  /busy/i,
+  /econnreset/i,
+  /econnrefused/i,
+  /socket/i,
+];
+const PERMANENT_ERROR_PATTERNS = [
+  /validation/i,
+  /schema/i,
+  /invalid/i,
+  /constraint/i,
+];
+
+function isTransientError(err: unknown): boolean {
+  const msg = String(err);
+  if (PERMANENT_ERROR_PATTERNS.some((p) => p.test(msg))) return false;
+  return TRANSIENT_ERROR_PATTERNS.some((p) => p.test(msg));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Validates that a snapshot returned by an adapter has the required Map fields.
  * Logs a warning and returns false if the snapshot is malformed.
@@ -49,7 +74,7 @@ function validateSnapshot(snapshot: ContractSnapshot): boolean {
 
 /**
  * SnapshotService
- * 
+ *
  * Aggregates signer and role state from normalized events.
  * Maintains current-state snapshots for fast queries.
  */
@@ -64,7 +89,7 @@ export class SnapshotService {
    */
   async processEvent(event: NormalizedEvent): Promise<SnapshotUpdateResult> {
     const contractId = event.metadata.contractId;
-    
+
     // Only process snapshot-relevant events
     if (!SnapshotNormalizer.isSnapshotEvent(event.type)) {
       return {
@@ -111,7 +136,7 @@ export class SnapshotService {
       }
 
       const activeSignerCount = Array.from(snapshot.signers.values()).filter(
-        (signer) => signer.isActive
+        (signer) => signer.isActive,
       ).length;
 
       // Update snapshot metadata
@@ -124,8 +149,24 @@ export class SnapshotService {
         totalRoleAssignments: snapshot.roles.size,
       };
 
-      // Save updated snapshot
-      await this.adapter.saveSnapshot(snapshot);
+      // Save updated snapshot (with retry for transient errors)
+      const MAX_RETRIES = 3;
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          await this.adapter.saveSnapshot(snapshot);
+          break;
+        } catch (saveError) {
+          if (attempt < MAX_RETRIES && isTransientError(saveError)) {
+            console.warn(
+              `[snapshot-service] saveSnapshot attempt ${attempt} failed, retrying...`,
+              saveError,
+            );
+            await sleep(100 * attempt);
+          } else {
+            throw saveError;
+          }
+        }
+      }
 
       return {
         success: true,
@@ -212,7 +253,7 @@ export class SnapshotService {
    */
   async rebuildSnapshot(
     events: NormalizedEvent[],
-    options: SnapshotRebuildOptions
+    options: SnapshotRebuildOptions,
   ): Promise<SnapshotUpdateResult> {
     const { contractId, clearExisting = true } = options;
 
@@ -224,18 +265,18 @@ export class SnapshotService {
 
       // Filter events by ledger range if specified
       let filteredEvents = events.filter(
-        (e) => e.metadata.contractId === contractId
+        (e) => e.metadata.contractId === contractId,
       );
 
       if (options.startLedger !== undefined) {
         filteredEvents = filteredEvents.filter(
-          (e) => e.metadata.ledger >= options.startLedger!
+          (e) => e.metadata.ledger >= options.startLedger!,
         );
       }
 
       if (options.endLedger !== undefined) {
         filteredEvents = filteredEvents.filter(
-          (e) => e.metadata.ledger <= options.endLedger!
+          (e) => e.metadata.ledger <= options.endLedger!,
         );
       }
 
@@ -268,7 +309,9 @@ export class SnapshotService {
     endLedger: number,
   ): Promise<SnapshotUpdateResult> {
     if (!this.rpc) {
-      console.warn("[snapshot-service] rebuildFromRpc called but no RPC client is configured — skipping");
+      console.warn(
+        "[snapshot-service] rebuildFromRpc called but no RPC client is configured — skipping",
+      );
       return {
         success: true,
         signersUpdated: 0,
@@ -289,7 +332,10 @@ export class SnapshotService {
     let currentLedger = startLedger;
 
     while (currentLedger <= endLedger) {
-      const batchEnd = Math.min(currentLedger + REBUILD_BATCH_SIZE - 1, endLedger);
+      const batchEnd = Math.min(
+        currentLedger + REBUILD_BATCH_SIZE - 1,
+        endLedger,
+      );
 
       try {
         const rawEvents = await this.rpc.getContractEvents({
@@ -310,14 +356,20 @@ export class SnapshotService {
           totalSignersUpdated += result.signersUpdated;
           totalRolesUpdated += result.rolesUpdated;
           totalEventsProcessed += result.eventsProcessed;
-          lastProcessedLedger = Math.max(lastProcessedLedger, result.lastProcessedLedger);
+          lastProcessedLedger = Math.max(
+            lastProcessedLedger,
+            result.lastProcessedLedger,
+          );
           if (!result.success && result.error) {
             errors.push(result.error);
           }
         }
       } catch (error) {
         const msg = String(error);
-        console.error(`[snapshot-service] rebuildFromRpc error at ledger ${currentLedger}:`, error);
+        console.error(
+          `[snapshot-service] rebuildFromRpc error at ledger ${currentLedger}:`,
+          error,
+        );
         errors.push(msg);
       }
 
@@ -393,7 +445,7 @@ export class SnapshotService {
    */
   private async processRoleAssigned(
     snapshot: ContractSnapshot,
-    event: NormalizedEvent<RoleAssignedData>
+    event: NormalizedEvent<RoleAssignedData>,
   ): Promise<{ signersUpdated: number; rolesUpdated: number }> {
     const { address, role } = event.data;
     const { ledger, ledgerClosedAt } = event.metadata;
@@ -450,7 +502,7 @@ export class SnapshotService {
    */
   private async processSignerRemoved(
     snapshot: ContractSnapshot,
-    event: NormalizedEvent<SignerRemovedData>
+    event: NormalizedEvent<SignerRemovedData>,
   ): Promise<{ signersUpdated: number; rolesUpdated: number }> {
     const address = event.data.signer;
     const { ledger, ledgerClosedAt } = event.metadata;
@@ -476,7 +528,7 @@ export class SnapshotService {
    */
   private async processInitialized(
     snapshot: ContractSnapshot,
-    event: NormalizedEvent<SignerAddedData>
+    event: NormalizedEvent<SignerAddedData>,
   ): Promise<{ signersUpdated: number; rolesUpdated: number }> {
     const { address, role, timestamp } = event.data;
     const { ledger } = event.metadata;
