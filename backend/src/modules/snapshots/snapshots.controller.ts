@@ -41,7 +41,8 @@ export function createSnapshotControllers(service: SnapshotService) {
 
   const getSigner: RequestHandler = async (req, res) => {
     try {
-      const { contractId, address } = req.params;
+      const contractId = req.params.contractId as string;
+      const address = req.params.address as string;
       const signer = await service.getSigner(contractId, address);
       if (!signer) {
         return error(res, { message: "Signer not found", status: 404 });

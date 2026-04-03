@@ -23,6 +23,8 @@ import { JobManager } from "./modules/jobs/job.manager.js";
 import type { NotificationQueue } from "./modules/notifications/notification.types.js";
 import { createLogger } from "./shared/logging/logger.js";
 import { SqliteStorageAdapter } from "./shared/storage/index.js";
+import { HorizonClient } from "./shared/rpc/horizon.client.js";
+import { TransactionsService } from "./modules/transactions/transactions.service.js";
 import type { Server } from "node:http";
 
 export interface BackendRuntime {
@@ -44,7 +46,7 @@ export interface BackendServer {
 
 export function startServer(
   env: BackendEnv = loadEnv(),
-  notificationQueue?: NotificationQueue,
+  _notificationQueue?: NotificationQueue,
 ): BackendServer {
   const jobManager = new JobManager();
 
@@ -102,26 +104,35 @@ export function startServer(
   );
   runtime.eventPollingService = eventPollingService;
 
-  jobManager.registerJob({
-    name: "proposal-consumer",
-    start: () => proposalActivityConsumer.start(),
-    stop: () => proposalActivityConsumer.stop(),
-    isRunning: () => proposalActivityConsumer.getIsRunning(),
-  }, { replace: true });
+  jobManager.registerJob(
+    {
+      name: "proposal-consumer",
+      start: () => proposalActivityConsumer.start(),
+      stop: () => proposalActivityConsumer.stop(),
+      isRunning: () => proposalActivityConsumer.getIsRunning(),
+    },
+    { replace: true },
+  );
 
-  jobManager.registerJob({
-    name: "event-polling",
-    start: () => eventPollingService.start(),
-    stop: () => eventPollingService.stop(),
-    isRunning: () => eventPollingService.getStatus().isPolling,
-  }, { replace: true });
+  jobManager.registerJob(
+    {
+      name: "event-polling",
+      start: () => eventPollingService.start(),
+      stop: () => eventPollingService.stop(),
+      isRunning: () => eventPollingService.getStatus().isPolling,
+    },
+    { replace: true },
+  );
 
-  jobManager.registerJob({
-    name: "recurring-indexer",
-    start: () => recurringIndexerService.start(),
-    stop: () => recurringIndexerService.stop(),
-    isRunning: () => recurringIndexerService.getStatus().isIndexing,
-  }, { replace: true });
+  jobManager.registerJob(
+    {
+      name: "recurring-indexer",
+      start: () => recurringIndexerService.start(),
+      stop: () => recurringIndexerService.stop(),
+      isRunning: () => recurringIndexerService.getStatus().isIndexing,
+    },
+    { replace: true },
+  );
 
   void jobManager.startAll();
 
