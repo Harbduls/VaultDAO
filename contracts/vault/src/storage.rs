@@ -212,6 +212,8 @@ pub enum FeatureKey {
     Subscription(u64),
     /// Next subscription ID counter -> u64
     NextSubscriptionId,
+    /// Subscription IDs indexed by subscriber address -> Vec<u64>
+    SubscriberIndex(Address),
 }
 
 /// TTL constants (in ledgers, ~5 seconds each)
@@ -2037,5 +2039,26 @@ pub fn get_subscription(env: &Env, id: u64) -> Result<Subscription, VaultError> 
     env.storage()
         .persistent()
         .get(&FeatureKey::Subscription(id))
-        .ok_or(VaultError::ProposalNotFound)
+        .ok_or(VaultError::SubscriptionNotFound)
+}
+
+// ============================================================================
+// Subscriber Index
+// ============================================================================
+
+pub fn get_subscriber_index(env: &Env, subscriber: &Address) -> Vec<u64> {
+    env.storage()
+        .persistent()
+        .get(&FeatureKey::SubscriberIndex(subscriber.clone()))
+        .unwrap_or_else(|| Vec::new(env))
+}
+
+pub fn add_to_subscriber_index(env: &Env, subscriber: &Address, subscription_id: u64) {
+    let mut ids = get_subscriber_index(env, subscriber);
+    ids.push_back(subscription_id);
+    let key = FeatureKey::SubscriberIndex(subscriber.clone());
+    env.storage().persistent().set(&key, &ids);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL);
 }
