@@ -7501,6 +7501,7 @@ impl VaultDAO {
         };
 
         storage::set_subscription(&env, &sub);
+        storage::add_to_subscriber_index(&env, &sub.subscriber, id);
         storage::extend_instance_ttl(&env);
 
         events::emit_subscription_created(
@@ -7528,25 +7529,23 @@ impl VaultDAO {
         let mut sub = storage::get_subscription(&env, subscription_id)?;
 
         if sub.status == SubscriptionStatus::Cancelled {
-            return Err(VaultError::ProposalAlreadyCancelled);
+            return Err(VaultError::SubscriptionAlreadyCancelled);
         }
         if sub.status != SubscriptionStatus::Active {
-            return Err(VaultError::ProposalNotPending);
+            return Err(VaultError::SubscriptionNotActive);
         }
 
         let current_ledger = env.ledger().sequence() as u64;
         if current_ledger < sub.next_renewal_ledger {
-            return Err(VaultError::TimelockNotExpired);
+            return Err(VaultError::RenewalNotDue);
         }
 
         // Only the subscriber can renew unless auto_renew is enabled.
         if !sub.auto_renew && caller != sub.subscriber {
-            return Err(VaultError::Unauthorized);
+            return Err(VaultError::NotSubscriberOrAdmin);
         }
 
         // Pull renewal payment from subscriber into vault, then forward to provider.
-        // Requires subscriber auth — for auto_renew the subscriber must have
-        // pre-authorized this contract to pull on their behalf.
         token::transfer_to_vault(&env, &sub.token, &sub.subscriber, sub.amount_per_period);
         token::transfer(
             &env,
@@ -7583,12 +7582,12 @@ impl VaultDAO {
         let mut sub = storage::get_subscription(&env, subscription_id)?;
 
         if sub.status == SubscriptionStatus::Cancelled {
-            return Err(VaultError::ProposalAlreadyCancelled);
+            return Err(VaultError::SubscriptionAlreadyCancelled);
         }
 
         let role = storage::get_role(&env, &caller);
         if caller != sub.subscriber && role != Role::Admin {
-            return Err(VaultError::Unauthorized);
+            return Err(VaultError::NotSubscriberOrAdmin);
         }
 
         sub.status = SubscriptionStatus::Cancelled;
@@ -7616,10 +7615,10 @@ impl VaultDAO {
         let mut sub = storage::get_subscription(&env, subscription_id)?;
 
         if sub.subscriber != subscriber {
-            return Err(VaultError::Unauthorized);
+            return Err(VaultError::NotSubscriberOrAdmin);
         }
         if sub.status != SubscriptionStatus::Active {
-            return Err(VaultError::ProposalNotPending);
+            return Err(VaultError::SubscriptionNotActive);
         }
         if new_amount_per_period <= 0 {
             return Err(VaultError::InvalidAmount);
@@ -7646,5 +7645,13 @@ impl VaultDAO {
     /// Get subscription details by ID.
     pub fn get_subscription(env: Env, subscription_id: u64) -> Result<Subscription, VaultError> {
         storage::get_subscription(&env, subscription_id)
+    }
+
+    /// Get all subscription IDs for a given subscriber address.
+    pub fn get_subscriptions_by_subscriber(
+        env: Env,
+        subscriber: Address,
+    ) -> Vec<u64> {
+        storage::get_subscriber_index(&env, &subscriber)
     }
 }
